@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prismadb } from "@/lib/prisma";
 import { inngest } from "@/inngest/client";
+import { requireBusinessContext } from "@/lib/tenant";
 import {
   paginationSchema,
   paginationArgs,
@@ -68,8 +69,10 @@ export const campaignTools = [
       args: { name: string; description?: string; from_name?: string; reply_to?: string; template_id?: string },
       userId: string
     ) {
+      const { businessId } = await requireBusinessContext();
       const campaign = await prismadb.crm_campaigns.create({
         data: {
+          businessId,
           v: 0,
           name: args.name,
           description: args.description,
@@ -217,8 +220,10 @@ export const campaignTools = [
       args: { name: string; description?: string; subject_default?: string; content_html: string; content_json: any },
       userId: string
     ) {
+      const { businessId } = await requireBusinessContext();
       const template = await prismadb.crm_campaign_templates.create({
         data: {
+          businessId,
           name: args.name,
           description: args.description,
           subject_default: args.subject_default,

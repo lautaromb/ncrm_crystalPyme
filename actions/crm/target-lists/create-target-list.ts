@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 
 export const createTargetList = async (data: {
@@ -8,18 +11,21 @@ export const createTargetList = async (data: {
   description?: string;
   targetIds?: string[];
 }) => {
-  const session = await getSession();
-  if (!session) return { error: "Unauthorized" };
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.lead.create");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
 
   const { name, description, targetIds = [] } = data;
   if (!name) return { error: "name is required" };
 
   try {
-    const list = await prismadb.crm_TargetLists.create({
+    const list = await db.crm_TargetLists.create({
       data: {
+        businessId,
         name,
         description,
-        created_by: (session.user as any).id,
+        created_by: userId,
         targets: {
           create: targetIds.map((id: string) => ({ target_id: id })),
         },

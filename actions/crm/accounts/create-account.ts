@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import { inngest } from "@/inngest/client";
 import { writeAuditLog } from "@/lib/audit-log";
@@ -30,18 +33,21 @@ export const createAccount = async (data: {
   member_of?: string;
   industry?: string;
 }) => {
-  const session = await getSession();
-  if (!session) return { error: "Unauthorized" };
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.contact.create");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
 
   const { name } = data;
   if (!name) return { error: "name is required" };
 
   try {
-    const account = await prismadb.crm_Accounts.create({
+    const account = await db.crm_Accounts.create({
       data: {
+        businessId,
         v: 0,
-        createdBy: session.user.id,
-        updatedBy: session.user.id,
+        createdBy: userId,
+        updatedBy: userId,
         ...data,
         status: "Active",
       },
@@ -51,7 +57,7 @@ export const createAccount = async (data: {
       entityId: account.id,
       action: "created",
       changes: null,
-      userId: session.user.id,
+      userId,
     });
     void inngest.send({ name: "crm/account.saved", data: { record_id: account.id } });
     revalidatePath("/[locale]/(routes)/crm/accounts", "page");

@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 
 export const createTemplate = async (data: {
   name: string;
@@ -9,8 +12,11 @@ export const createTemplate = async (data: {
   content_html: string;
   content_json: object;
 }) => {
-  const session = await getSession();
-  return prismadb.crm_campaign_templates.create({
-    data: { ...data, created_by: session?.user?.id ?? null },
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.lead.create");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
+  return db.crm_campaign_templates.create({
+    data: { ...data, businessId, created_by: userId },
   });
 };

@@ -1,20 +1,20 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+} from "@/lib/tenant";
 import { encrypt } from "@/lib/email-crypto";
 import Imap from "imap";
 
 async function requireSession() {
-  const session = await getSession();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-  return session.user.id as string;
+  const { ctx, businessId } = await requireBusinessContext();
+  return { userId: ctx.userId, businessId };
 }
 
 export async function getEmailAccounts() {
-  const userId = await requireSession();
+  const { userId, businessId } = await requireSession();
   return prismadb.emailAccount.findMany({
-    where: { userId },
+    where: { userId, businessId },
     select: {
       id: true,
       label: true,
@@ -48,7 +48,7 @@ type CreateInput = {
 };
 
 export async function createEmailAccount(input: CreateInput) {
-  const userId = await requireSession();
+  const { userId, businessId } = await requireSession();
 
   // Validate required string fields
   if (!input.label?.trim()) throw new Error("Label is required");
@@ -62,6 +62,7 @@ export async function createEmailAccount(input: CreateInput) {
   const passwordEncrypted = encrypt(input.password);
   return prismadb.emailAccount.create({
     data: {
+      businessId,
       userId,
       label: input.label,
       imapHost: input.imapHost,
@@ -79,15 +80,15 @@ export async function createEmailAccount(input: CreateInput) {
 }
 
 export async function deleteEmailAccount(id: string) {
-  const userId = await requireSession();
-  const account = await prismadb.emailAccount.findFirst({ where: { id, userId } });
+  const { userId, businessId } = await requireSession();
+  const account = await prismadb.emailAccount.findFirst({ where: { id, userId, businessId } });
   if (!account) throw new Error("Not found");
   await prismadb.emailAccount.delete({ where: { id } });
 }
 
 export async function setEmailAccountActive(id: string, isActive: boolean) {
-  const userId = await requireSession();
-  const account = await prismadb.emailAccount.findFirst({ where: { id, userId } });
+  const { userId, businessId } = await requireSession();
+  const account = await prismadb.emailAccount.findFirst({ where: { id, userId, businessId } });
   if (!account) throw new Error("Not found");
   return prismadb.emailAccount.update({ where: { id }, data: { isActive } });
 }

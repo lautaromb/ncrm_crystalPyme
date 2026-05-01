@@ -1,6 +1,11 @@
 "use server";
 import { getSession } from "@/lib/auth-server";
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import NewTaskFromProject from "@/emails/NewTaskFromProject";
 import resendHelper from "@/lib/resend";
@@ -14,6 +19,9 @@ export const createTaskInBoard = async (data: {
   user?: string;
   dueDateAt?: Date;
 }) => {
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.board.manage");
+  const db = tenantPrisma(businessId);
   const session = await getSession();
   if (!session) return { error: "Unauthorized" };
 
@@ -24,26 +32,27 @@ export const createTaskInBoard = async (data: {
   // Quick-add path: no title/user/priority/content - create a blank task
   if (!title || !user || !priority || !content) {
     try {
-      const tasksCount = await prismadb.tasks.count({
+      const tasksCount = await db.tasks.count({
         where: { section },
       });
 
-      await prismadb.tasks.create({
+      await db.tasks.create({
         data: {
+          businessId,
           v: 0,
           priority: "normal",
           title: "New task",
           content: "",
           section,
-          createdBy: session.user.id,
-          updatedBy: session.user.id,
+          createdBy: ctx.userId,
+          updatedBy: ctx.userId,
           position: tasksCount > 0 ? tasksCount : 0,
-          user: session.user.id,
+          user: ctx.userId,
           taskStatus: "ACTIVE",
         },
       });
 
-      await prismadb.boards.update({
+      await db.boards.update({
         where: { id: boardId },
         data: { updatedAt: new Date() },
       });
@@ -58,12 +67,13 @@ export const createTaskInBoard = async (data: {
 
   // Full-detail path
   try {
-    const tasksCount = await prismadb.tasks.count({
+    const tasksCount = await db.tasks.count({
       where: { section },
     });
 
-    const task = await prismadb.tasks.create({
+    const task = await db.tasks.create({
       data: {
+        businessId,
         v: 0,
         priority,
         title,
@@ -78,7 +88,7 @@ export const createTaskInBoard = async (data: {
       },
     });
 
-    await prismadb.boards.update({
+    await db.boards.update({
       where: { id: boardId },
       data: { updatedAt: new Date() },
     });
@@ -99,7 +109,7 @@ export const createTaskInBoard = async (data: {
             where: { id: user },
           });
 
-          const boardData = await prismadb.boards.findUnique({
+          const boardData = await db.boards.findUnique({
             where: { id: boardId },
           });
 

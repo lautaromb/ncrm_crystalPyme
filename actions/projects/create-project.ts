@@ -1,6 +1,10 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 
 export const createProject = async (data: {
@@ -8,26 +12,29 @@ export const createProject = async (data: {
   description: string;
   visibility: string;
 }) => {
-  const session = await getSession();
-  if (!session) return { error: "Unauthorized" };
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.board.manage");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
 
   const { title, description, visibility } = data;
   if (!title) return { error: "Missing project name" };
   if (!description) return { error: "Missing project description" };
 
   try {
-    const boardsCount = await prismadb.boards.count();
+    const boardsCount = await db.boards.count();
 
-    const newBoard = await prismadb.boards.create({
+    const newBoard = await db.boards.create({
       data: {
+        businessId,
         v: 0,
-        user: session.user.id,
+        user: userId,
         title,
         description,
         position: boardsCount > 0 ? boardsCount : 0,
         visibility,
-        sharedWith: [session.user.id],
-        createdBy: session.user.id,
+        sharedWith: [userId],
+        createdBy: userId,
       },
     });
 

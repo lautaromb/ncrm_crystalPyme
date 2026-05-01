@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prismadb } from "@/lib/prisma";
+import { requireBusinessContext } from "@/lib/tenant";
 import {
   paginationSchema,
   paginationArgs,
@@ -83,8 +84,10 @@ export const crmProductTools = [
       },
       userId: string
     ) {
+      const { businessId } = await requireBusinessContext();
       const product = await prismadb.crm_Products.create({
         data: {
+          businessId,
           name: args.name,
           description: args.description,
           sku: args.sku,

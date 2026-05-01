@@ -122,11 +122,23 @@ beforeAll(async () => {
     });
   }
 
+  // Resolve demo business (created by tenancy seed) to scope test data.
+  const demoBusiness = await prismadb.business.findUniqueOrThrow({
+    where: { slug: "demo-business" },
+    select: { id: true },
+  });
+  const demoBusinessId = demoBusiness.id;
+
   // Ensure a test account exists
   let account = await prismadb.crm_Accounts.findFirst();
   if (!account) {
     account = await prismadb.crm_Accounts.create({
-      data: { v: 0, name: "Lifecycle Test Account", status: "Active" },
+      data: {
+        businessId: demoBusinessId,
+        v: 0,
+        name: "Lifecycle Test Account",
+        status: "Active",
+      },
     });
   }
   testAccountId = account.id;
@@ -142,6 +154,7 @@ beforeAll(async () => {
   if (!series) {
     series = await prismadb.invoice_Series.create({
       data: {
+        businessId: demoBusinessId,
         name: "Test Series",
         prefixTemplate: "INV-{YYYY}-",
         resetPolicy: "YEARLY",
@@ -165,6 +178,7 @@ beforeAll(async () => {
     }
     await prismadb.invoice_Settings.create({
       data: {
+        businessId: demoBusinessId,
         baseCurrency: currency.code,
         defaultSeriesId: series.id,
         defaultDueDays: 14,

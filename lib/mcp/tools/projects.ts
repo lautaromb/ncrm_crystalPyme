@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prismadb } from "@/lib/prisma";
+import { requireBusinessContext } from "@/lib/tenant";
 import {
   paginationSchema,
   paginationArgs,
@@ -77,8 +78,10 @@ export const projectTools = [
       args: { title: string; description: string; icon?: string; visibility?: string },
       userId: string
     ) {
+      const { businessId } = await requireBusinessContext();
       const board = await prismadb.boards.create({
         data: {
+          businessId,
           v: 0,
           title: args.title,
           description: args.description,
@@ -270,8 +273,10 @@ export const projectTools = [
         where: { section: args.section },
         _max: { position: true },
       });
+      const { businessId } = await requireBusinessContext();
       const task = await prismadb.tasks.create({
         data: {
+          businessId,
           v: 0,
           title: args.title,
           content: args.content,

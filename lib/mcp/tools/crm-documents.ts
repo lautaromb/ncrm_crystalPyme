@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prismadb } from "@/lib/prisma";
+import { requireBusinessContext } from "@/lib/tenant";
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { minioClient, MINIO_BUCKET, MINIO_PUBLIC_URL } from "@/lib/minio";
@@ -124,8 +125,10 @@ export const crmDocumentTools = [
       const key = `documents/${randomUUID()}.${ext}`;
       const fileUrl = `${MINIO_PUBLIC_URL}/${MINIO_BUCKET}/${key}`;
 
+      const { businessId } = await requireBusinessContext();
       const doc = await prismadb.documents.create({
         data: {
+          businessId,
           document_name: args.document_name,
           document_file_mimeType: args.contentType,
           document_file_url: fileUrl,

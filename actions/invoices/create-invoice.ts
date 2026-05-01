@@ -2,12 +2,20 @@
 
 import { prismadb } from "@/lib/prisma";
 import { getUser } from "@/actions/get-user";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { Decimal } from "decimal.js";
 import { computeInvoiceTotals, computeLineTotal } from "@/lib/invoices/totals";
 import { createInvoiceSchema } from "@/types/invoice";
 import { serializeDecimals } from "@/lib/serialize-decimals";
 
 export async function createInvoice(raw: unknown) {
+  const { businessId } = await requireBusinessContext();
+  await requirePermission("business.invoice.create");
+  const db = tenantPrisma(businessId);
   const user = await getUser();
   const input = createInvoiceSchema.parse(raw);
 
@@ -34,8 +42,9 @@ export async function createInvoice(raw: unknown) {
   }));
   const totals = computeInvoiceTotals(lineInputs);
 
-  const invoice = await prismadb.invoices.create({
+  const invoice = await db.invoices.create({
     data: {
+      businessId,
       type: input.type,
       status: "DRAFT",
       createdBy: user.id,

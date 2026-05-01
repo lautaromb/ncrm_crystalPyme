@@ -1,6 +1,10 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import sendEmail from "@/lib/sendmail";
 import { inngest } from "@/inngest/client";
@@ -22,10 +26,10 @@ export const createOpportunity = async (data: {
   sales_stage?: string;
   type?: string;
 }) => {
-  const session = await getSession();
-  if (!session) return { error: "Unauthorized" };
-
-  const userId = session.user.id;
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.opportunity.manage");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
   const {
     account,
     assigned_to,
@@ -47,8 +51,9 @@ export const createOpportunity = async (data: {
     const snapshotRate = currency
       ? await getSnapshotRate(currency, defaultCurrency)
       : null;
-    const opportunity = await prismadb.crm_Opportunities.create({
+    const opportunity = await db.crm_Opportunities.create({
       data: {
+        businessId,
         account: account || undefined,
         assigned_to: assigned_to || userId,
         budget: budget ? parseFloat(budget) : undefined,
@@ -96,7 +101,7 @@ export const createOpportunity = async (data: {
       entityId: opportunity.id,
       action: "created",
       changes: null,
-      userId: session.user.id,
+      userId,
     });
     void inngest.send({ name: "crm/opportunity.saved", data: { record_id: opportunity.id } });
     revalidatePath("/[locale]/(routes)/crm/opportunities", "page");

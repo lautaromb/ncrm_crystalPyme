@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prismadb } from "@/lib/prisma";
+import { requireBusinessContext } from "@/lib/tenant";
 import {
   paginationSchema,
   paginationArgs,
@@ -91,9 +92,10 @@ export const crmLeadTools = [
       },
       userId: string
     ) {
+      const { businessId } = await requireBusinessContext();
       const { lastName, ...rest } = args;
       const lead = await prismadb.crm_Leads.create({
-        data: { v: 0, lastName, ...rest, assigned_to: userId, createdBy: userId },
+        data: { businessId, v: 0, lastName, ...rest, assigned_to: userId, createdBy: userId },
       });
       return itemResponse(lead);
     },

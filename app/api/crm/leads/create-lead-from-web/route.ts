@@ -1,4 +1,5 @@
 import { prismadb } from "@/lib/prisma";
+import { tenantPrisma } from "@/lib/tenant";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -38,34 +39,58 @@ export async function POST(req: Request) {
   if (token.trim() !== process.env.NEXTCRM_TOKEN.trim()) {
     console.log("Unauthorized");
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  } else {
-    if (!lastName) {
-      return NextResponse.json(
-        { message: "Missing required fields" },
-        { status: 400 }
-      );
-    }
-    try {
-      await prismadb.crm_Leads.create({
-        data: {
-          v: 1,
-          firstName,
-          lastName,
-          company: account,
-          jobTitle: job,
-          email,
-          phone,
-        },
-      });
+  }
 
-      return NextResponse.json({ message: "New lead created successfully" });
-      //return res.status(200).json({ json: "newContact" });
-    } catch (error) {
-      console.log(error);
-      return NextResponse.json(
-        { message: "Error creating new lead" },
-        { status: 500 }
-      );
-    }
+  if (!lastName) {
+    return NextResponse.json(
+      { message: "Missing required fields" },
+      { status: 400 }
+    );
+  }
+
+  // Identificacion del Business destino: por header `X-Business-Slug` o por
+  // campo `businessSlug` en el body. TODO(phase-11): cuando exista el site
+  // builder, derivar de `formId`/site origin.
+  const businessSlug =
+    headers.get("X-Business-Slug") ?? (body.businessSlug as string | undefined);
+  if (!businessSlug) {
+    return NextResponse.json(
+      { message: "X-Business-Slug header is required" },
+      { status: 400 }
+    );
+  }
+  const business = await prismadb.business.findUnique({
+    where: { slug: businessSlug },
+    select: { id: true, status: true, deletedAt: true },
+  });
+  if (!business || business.deletedAt || business.status !== "ACTIVE") {
+    return NextResponse.json(
+      { message: "Business not found or not active" },
+      { status: 404 }
+    );
+  }
+
+  try {
+    const db = tenantPrisma(business.id);
+    await db.crm_Leads.create({
+      data: {
+        businessId: business.id,
+        v: 1,
+        firstName,
+        lastName,
+        company: account,
+        jobTitle: job,
+        email,
+        phone,
+      },
+    });
+
+    return NextResponse.json({ message: "New lead created successfully" });
+  } catch (error) {
+    console.log(error);
+    return NextResponse.json(
+      { message: "Error creating new lead" },
+      { status: 500 }
+    );
   }
 }

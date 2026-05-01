@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 
 export const createTarget = async (data: {
@@ -19,15 +22,17 @@ export const createTarget = async (data: {
   social_facebook?: string;
   status?: boolean;
 }) => {
-  const session = await getSession();
-  if (!session) return { error: "Unauthorized" };
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.lead.create");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
 
   const { last_name, email, mobile_phone, ...rest } = data;
   if (!last_name && !data.company) return { error: "last_name or company is required" };
 
   try {
-    const target = await prismadb.crm_Targets.create({
-      data: { last_name: last_name ?? "", email, mobile_phone, ...rest, created_by: (session.user as any).id },
+    const target = await db.crm_Targets.create({
+      data: { businessId, last_name: last_name ?? "", email, mobile_phone, ...rest, created_by: userId },
     });
     revalidatePath("/[locale]/(routes)/crm/targets", "page");
     return { data: target };

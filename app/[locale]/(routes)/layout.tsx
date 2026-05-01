@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth-server";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { prismadb } from "@/lib/prisma";
 
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -63,6 +64,14 @@ export default async function AppLayout({
 
   if (user?.userStatus === "INACTIVE") {
     return redirect("/inactive");
+  }
+
+  // Si el usuario no tiene ninguna membership → onboarding
+  const membershipCount = await prismadb.businessMember.count({
+    where: { userId: user.id },
+  });
+  if (membershipCount === 0) {
+    return redirect("/onboarding");
   }
 
   // Fetch localization dictionary

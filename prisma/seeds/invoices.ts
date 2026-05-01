@@ -13,13 +13,14 @@ const TAX_RATES = [
   { id: TAX_RATE_0_ID, name: "Zero 0%", rate: 0, isDefault: false },
 ];
 
-export async function seedInvoices(prisma: PrismaClient) {
+export async function seedInvoices(prisma: PrismaClient, businessId: string) {
   console.log("Seeding invoice series...");
   await prisma.invoice_Series.upsert({
     where: { id: SERIES_ID },
     update: { name: "Main", prefixTemplate: "INV-{YYYY}-{####}" },
     create: {
       id: SERIES_ID,
+      businessId,
       name: "Main",
       prefixTemplate: "INV-{YYYY}-{####}",
       resetPolicy: "YEARLY",
@@ -53,6 +54,7 @@ export async function seedInvoices(prisma: PrismaClient) {
     },
     create: {
       id: SETTINGS_ID,
+      businessId,
       baseCurrency: "USD",
       defaultDueDays: 14,
       defaultSeriesId: SERIES_ID,

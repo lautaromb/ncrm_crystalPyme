@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import { inngest } from "@/inngest/client";
 
@@ -15,11 +18,14 @@ interface CreateDocumentInput {
 }
 
 export async function createDocument(input: CreateDocumentInput) {
-  const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.contact.update");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
 
-  const document = await prismadb.documents.create({
+  const document = await db.documents.create({
     data: {
+      businessId,
       v: 0,
       document_name: input.name,
       description: "new document",
@@ -29,8 +35,8 @@ export async function createDocument(input: CreateDocumentInput) {
       document_file_mimeType: input.mimeType,
       content_hash: input.contentHash ?? null,
       processing_status: "PENDING",
-      createdBy: session.user.id,
-      assigned_user: session.user.id,
+      createdBy: userId,
+      assigned_user: userId,
       ...(input.accountId
         ? { accounts: { create: { account_id: input.accountId } } }
         : {}),

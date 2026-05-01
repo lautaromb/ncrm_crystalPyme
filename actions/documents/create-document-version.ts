@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import { inngest } from "@/inngest/client";
 
@@ -14,11 +17,12 @@ interface CreateVersionInput {
 }
 
 export async function createDocumentVersion(input: CreateVersionInput) {
-  const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.contact.update");
+  const userId = ctx.userId;
 
-  const parent = await prismadb.documents.findUnique({
-    where: { id: input.parentDocumentId },
+  const parent = await prismadb.documents.findFirst({
+    where: { id: input.parentDocumentId, businessId },
     select: { id: true, document_name: true, version: true, accounts: { select: { account_id: true } } },
   });
   if (!parent) throw new Error("Parent document not found");
@@ -28,6 +32,7 @@ export async function createDocumentVersion(input: CreateVersionInput) {
   const [newDoc] = await prismadb.$transaction([
     prismadb.documents.create({
       data: {
+        businessId,
         v: 0,
         document_name: parent.document_name,
         description: `Version ${newVersion}`,
@@ -39,8 +44,8 @@ export async function createDocumentVersion(input: CreateVersionInput) {
         processing_status: "PENDING",
         version: newVersion,
         parent_document_id: input.parentDocumentId,
-        createdBy: session.user.id,
-        assigned_user: session.user.id,
+        createdBy: userId,
+        assigned_user: userId,
       },
     }),
     prismadb.documents.update({
