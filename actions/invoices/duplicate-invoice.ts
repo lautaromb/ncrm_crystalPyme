@@ -1,19 +1,27 @@
 "use server";
 
-import { prismadb } from "@/lib/prisma";
 import { getUser } from "@/actions/get-user";
 import { serializeDecimals } from "@/lib/serialize-decimals";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 
 export async function duplicateInvoice(invoiceId: string) {
+  const { businessId } = await requireBusinessContext();
+  await requirePermission("business.invoice.create");
+  const db = tenantPrisma(businessId);
   const user = await getUser();
 
-  const source = await prismadb.invoices.findUniqueOrThrow({
+  const source = await db.invoices.findUniqueOrThrow({
     where: { id: invoiceId },
     include: { lineItems: { orderBy: { position: "asc" } } },
   });
 
-  const invoice = await prismadb.invoices.create({
+  const invoice = await db.invoices.create({
     data: {
+      businessId,
       type: source.type,
       status: "DRAFT",
       createdBy: user.id,

@@ -1,6 +1,11 @@
 "use server";
 import { getSession } from "@/lib/auth-server";
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import NewTaskFromProject from "@/emails/NewTaskFromProject";
 import resendHelper from "@/lib/resend";
@@ -14,6 +19,9 @@ export const createTask = async (data: {
   dueDateAt?: Date;
   account?: string;
 }) => {
+  const { businessId } = await requireBusinessContext();
+  await requirePermission("business.board.manage");
+  const db = tenantPrisma(businessId);
   const session = await getSession();
   if (!session) return { error: "Unauthorized" };
 
@@ -31,12 +39,13 @@ export const createTask = async (data: {
 
     if (!sectionId) return { error: "No section found" };
 
-    const tasksCount = await prismadb.tasks.count({
+    const tasksCount = await db.tasks.count({
       where: { section: sectionId.id },
     });
 
-    const task = await prismadb.tasks.create({
+    const task = await db.tasks.create({
       data: {
+        businessId,
         v: 0,
         priority,
         title,
@@ -51,7 +60,7 @@ export const createTask = async (data: {
       },
     });
 
-    await prismadb.boards.update({
+    await db.boards.update({
       where: { id: board },
       data: { updatedAt: new Date() },
     });
@@ -71,7 +80,7 @@ export const createTask = async (data: {
             where: { id: user },
           });
 
-          const boardData = await prismadb.boards.findUnique({
+          const boardData = await db.boards.findUnique({
             where: { id: board },
           });
 

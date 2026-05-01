@@ -145,6 +145,7 @@ export const emailSyncAccount = inngest.createFunction(
       if (newMessages.length > 0) {
         await prismadb.email.createMany({
           data: newMessages.map((msg) => ({
+            businessId: account.businessId,
             emailAccountId: accountId,
             userId: account.userId,
             rfcMessageId: msg.rfcMessageId,

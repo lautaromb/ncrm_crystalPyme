@@ -2,8 +2,11 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prismadb } from "@/lib/prisma";
-import { getUser } from "@/actions/get-user";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 
 const requiredStr = (label: string, max: number) =>
   z.string().trim().min(1, `${label} is required`).max(max, `${label} must be ≤ ${max} chars`);
@@ -63,13 +66,9 @@ export type ActionResult<T = unknown> =
 export async function saveInvoiceSettings(
   input: InvoiceSettingsInput
 ): Promise<ActionResult> {
-  let user;
-  try {
-    user = await getUser();
-  } catch {
-    return { ok: false, error: "Unauthorized" };
-  }
-  if (!user.is_admin) return { ok: false, error: "Forbidden" };
+  const { businessId } = await requireBusinessContext();
+  await requirePermission("business.settings.update");
+  const db = tenantPrisma(businessId);
 
   const parsed = settingsSchema.safeParse(input);
   if (!parsed.success) {
@@ -87,13 +86,13 @@ export async function saveInvoiceSettings(
   const data = parsed.data;
 
   try {
-    const existing = await prismadb.invoice_Settings.findFirst();
+    const existing = await db.invoice_Settings.findFirst();
     const settings = existing
-      ? await prismadb.invoice_Settings.update({
+      ? await db.invoice_Settings.update({
           where: { id: existing.id },
           data,
         })
-      : await prismadb.invoice_Settings.create({ data });
+      : await db.invoice_Settings.create({ data: { ...data, businessId } });
 
     revalidatePath("/admin/invoices/settings");
     return { ok: true, data: settings };

@@ -1,10 +1,14 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
 import { prismadb } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import sendEmail from "@/lib/sendmail";
 import { inngest } from "@/inngest/client";
 import { writeAuditLog } from "@/lib/audit-log";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 
 export const createLead = async (data: {
   first_name?: string;
@@ -22,10 +26,10 @@ export const createLead = async (data: {
   assigned_to?: string;
   accountIDs?: string;
 }) => {
-  const session = await getSession();
-  if (!session) return { error: "Unauthorized" };
-
-  const userId = session.user.id;
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.lead.create");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
   const {
     first_name,
     last_name,
@@ -44,8 +48,9 @@ export const createLead = async (data: {
   } = data;
 
   try {
-    const lead = await prismadb.crm_Leads.create({
+    const lead = await db.crm_Leads.create({
       data: {
+        businessId,
         v: 1,
         createdBy: userId,
         updatedBy: userId,
@@ -92,7 +97,7 @@ export const createLead = async (data: {
       entityId: lead.id,
       action: "created",
       changes: null,
-      userId: session.user.id,
+      userId,
     });
     void inngest.send({ name: "crm/lead.saved", data: { record_id: lead.id } });
     revalidatePath("/[locale]/(routes)/crm/leads", "page");

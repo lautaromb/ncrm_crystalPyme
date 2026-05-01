@@ -1,25 +1,46 @@
 import { prismadb } from "@/lib/prisma";
+import { tenantPrisma } from "@/lib/tenant";
 import { NextResponse } from "next/server";
 
+/**
+ * Endpoint publico para integraciones externas (Zapier, formularios web, etc.)
+ * que reciben contactos para un Business especifico.
+ *
+ * Auth:
+ *  - Header `NEXTCRM_TOKEN`: token global (env var). Phase 10 deberia migrar
+ *    a API keys por-business con scopes.
+ *  - Header `X-Business-Slug`: identifica el Business destino. El token global
+ *    no aporta tenancy, asi que el caller debe ser explicito.
+ */
 export async function POST(req: Request) {
   const apiKey = req.headers.get("NEXTCRM_TOKEN");
-
-  // Get API key from headers
   if (!apiKey) {
     return NextResponse.json({ error: "API key is missing" }, { status: 401 });
   }
-
-  // Here you would typically check the API key against a stored value
-  // For example, you could fetch it from a database or environment variable
-  const storedApiKey = process.env.NEXTCRM_TOKEN; // Example of fetching from env
+  const storedApiKey = process.env.NEXTCRM_TOKEN;
   if (apiKey !== storedApiKey) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
+  const businessSlug = req.headers.get("X-Business-Slug");
+  if (!businessSlug) {
+    return NextResponse.json(
+      { error: "X-Business-Slug header is required" },
+      { status: 400 }
+    );
+  }
+  const business = await prismadb.business.findUnique({
+    where: { slug: businessSlug },
+    select: { id: true, status: true, deletedAt: true },
+  });
+  if (!business || business.deletedAt || business.status !== "ACTIVE") {
+    return NextResponse.json(
+      { error: "Business not found or not active" },
+      { status: 404 }
+    );
+  }
+
   const body = await req.json();
-
-  console.log(body, "body");
-
   const { name, surname, email, phone, company, message, tag } = body;
   if (!name || !surname || !email || !phone || !company || !message || !tag) {
     return NextResponse.json(
@@ -29,8 +50,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    await prismadb.crm_Contacts.create({
+    const db = tenantPrisma(business.id);
+    await db.crm_Contacts.create({
       data: {
+        businessId: business.id,
         first_name: name,
         last_name: surname,
         email,

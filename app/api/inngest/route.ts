@@ -22,6 +22,9 @@ import { reportSendScheduled } from "@/inngest/functions/reports/send-scheduled"
 import { enrichDocument } from "@/inngest/functions/documents/enrich-document";
 import { generateDocumentThumbnail } from "@/inngest/functions/documents/generate-thumbnail";
 import { syncExchangeRates } from "@/inngest/functions/ecb/sync-exchange-rates";
+import { monthlyBilling } from "@/inngest/functions/billing/monthly-billing";
+import { suspendOverdue } from "@/inngest/functions/billing/suspend-overdue";
+import { quotaReset } from "@/inngest/functions/billing/quota-reset";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -48,5 +51,9 @@ export const { GET, POST, PUT } = serve({
     enrichDocument,
     generateDocumentThumbnail,
     syncExchangeRates,
+    // Billing
+    monthlyBilling,
+    suspendOverdue,
+    quotaReset,
   ],
 });

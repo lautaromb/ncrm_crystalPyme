@@ -1,7 +1,10 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { CreateNewContract } from "./schema";
 import { InputType, ReturnType } from "./types";
 
@@ -10,18 +13,13 @@ import { writeAuditLog } from "@/lib/audit-log";
 import { getSnapshotRate, getDefaultCurrency } from "@/lib/currency";
 
 const handler = async (data: InputType): Promise<ReturnType> => {
-  const session = await getSession();
-
-  if (!session?.user?.email) {
-    return {
-      error: "User not logged in.",
-    };
-  }
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.opportunity.manage");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
 
   const user = await prismadb.users.findUnique({
-    where: {
-      email: session?.user?.email,
-    },
+    where: { id: userId },
   });
 
   if (!user) {
@@ -55,8 +53,9 @@ const handler = async (data: InputType): Promise<ReturnType> => {
     const snapshotRate = currency
       ? await getSnapshotRate(currency, defaultCurrency)
       : null;
-    const result = await prismadb.crm_Contracts.create({
+    const result = await db.crm_Contracts.create({
       data: {
+        businessId,
         v: 0,
         title,
         value: parseFloat(value),

@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 import { AssignProduct } from "./schema";
 import { InputType, ReturnType } from "./types";
 import { createSafeAction } from "@/lib/create-safe-action";
@@ -9,16 +12,14 @@ import { getSnapshotRate, getDefaultCurrency } from "@/lib/currency";
 import { revalidatePath } from "next/cache";
 
 const handler = async (data: InputType): Promise<ReturnType> => {
-  const session = await getSession();
-  if (!session?.user?.id) {
-    return { error: "Unauthorized" };
-  }
-
-  const userId = session.user.id;
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.opportunity.manage");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
   const { accountId, productId, quantity, custom_price, currency, status, start_date, end_date, renewal_date, notes } = data;
 
   try {
-    const product = await prismadb.crm_Products.findUnique({ where: { id: productId } });
+    const product = await db.crm_Products.findUnique({ where: { id: productId } });
     if (!product || product.deletedAt) {
       return { error: "Product not found" };
     }
@@ -26,7 +27,7 @@ const handler = async (data: InputType): Promise<ReturnType> => {
       return { error: "Only active products can be assigned to accounts" };
     }
 
-    const existingAssignment = await prismadb.crm_AccountProducts.findFirst({
+    const existingAssignment = await db.crm_AccountProducts.findFirst({
       where: { accountId, productId, status: { in: ["ACTIVE", "PENDING"] } },
     });
     if (existingAssignment) {
@@ -43,8 +44,9 @@ const handler = async (data: InputType): Promise<ReturnType> => {
     const defaultCurrency = await getDefaultCurrency();
     const snapshotRate = currency ? await getSnapshotRate(currency, defaultCurrency) : null;
 
-    const assignment = await prismadb.crm_AccountProducts.create({
+    const assignment = await db.crm_AccountProducts.create({
       data: {
+        businessId,
         accountId, productId, quantity,
         custom_price: custom_price ? parseFloat(custom_price) : undefined,
         currency,

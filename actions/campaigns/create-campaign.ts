@@ -1,6 +1,9 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+  requirePermission,
+  tenantPrisma,
+} from "@/lib/tenant";
 
 type StepInput = {
   order: number;
@@ -20,15 +23,19 @@ export const createCampaign = async (data: {
   steps: StepInput[];
   scheduled_at?: Date;
 }) => {
-  const session = await getSession();
+  const { ctx, businessId } = await requireBusinessContext();
+  await requirePermission("business.lead.create");
+  const db = tenantPrisma(businessId);
+  const userId = ctx.userId;
   const { target_list_ids, steps, ...campaignData } = data;
 
-  return prismadb.crm_campaigns.create({
+  return db.crm_campaigns.create({
     data: {
       ...campaignData,
+      businessId,
       v: 0,
       status: data.scheduled_at ? "scheduled" : "draft",
-      created_by: session?.user?.id ?? null,
+      created_by: userId,
       target_lists: {
         create: target_list_ids.map((id) => ({ target_list_id: id })),
       },

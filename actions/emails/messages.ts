@@ -1,7 +1,8 @@
 "use server";
-import { getSession } from "@/lib/auth-server";
-
 import { prismadb } from "@/lib/prisma";
+import {
+  requireBusinessContext,
+} from "@/lib/tenant";
 import { decrypt } from "@/lib/email-crypto";
 import nodemailer from "nodemailer";
 import { EmailFolder } from "@prisma/client";
@@ -10,9 +11,8 @@ const PAGE_SIZE = 50;
 const MAX_COUNT = 10_000;
 
 async function requireSession() {
-  const session = await getSession();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-  return session.user.id as string;
+  const { ctx, businessId } = await requireBusinessContext();
+  return { userId: ctx.userId, businessId };
 }
 
 export async function getEmails(
@@ -21,10 +21,11 @@ export async function getEmails(
   page: number,
   search?: string
 ) {
-  const userId = await requireSession();
+  const { userId, businessId } = await requireSession();
 
   const baseWhere = {
     userId,
+    businessId,
     emailAccountId: accountId,
     folder,
     isDeleted: false,
@@ -67,9 +68,9 @@ export async function getEmails(
 }
 
 export async function getEmail(id: string) {
-  const userId = await requireSession();
+  const { userId, businessId } = await requireSession();
   const email = await prismadb.email.findFirst({
-    where: { id, userId, isDeleted: false },
+    where: { id, userId, businessId, isDeleted: false },
     include: {
       contacts: { include: { contact: { select: { id: true, first_name: true, last_name: true } } } },
       accounts: { include: { account: { select: { id: true, name: true } } } },
@@ -137,8 +138,8 @@ export async function getEmail(id: string) {
 }
 
 export async function deleteEmail(id: string) {
-  const userId = await requireSession();
-  const email = await prismadb.email.findFirst({ where: { id, userId, isDeleted: false } });
+  const { userId, businessId } = await requireSession();
+  const email = await prismadb.email.findFirst({ where: { id, userId, businessId, isDeleted: false } });
   if (!email) throw new Error("Not found");
   await prismadb.email.update({ where: { id }, data: { isDeleted: true } });
 }
@@ -155,10 +156,10 @@ type SendInput = {
 };
 
 export async function sendEmail(input: SendInput) {
-  const userId = await requireSession();
+  const { userId, businessId } = await requireSession();
 
   const account = await prismadb.emailAccount.findFirst({
-    where: { id: input.accountId, userId },
+    where: { id: input.accountId, userId, businessId },
   });
   if (!account) throw new Error("Account not found");
 
@@ -185,6 +186,7 @@ export async function sendEmail(input: SendInput) {
   // Write sent message to DB immediately so it appears in Sent view
   await prismadb.email.create({
     data: {
+      businessId,
       emailAccountId: input.accountId,
       userId,
       rfcMessageId: info.messageId ?? `local-${crypto.randomUUID()}@nextcrm`,

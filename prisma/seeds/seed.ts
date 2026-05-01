@@ -17,6 +17,7 @@ import leadTypesData from "../initial-data/crm_Lead_Types.json";
 
 import { seedCurrencies } from "./currencies";
 import { seedInvoices } from "./invoices";
+import { seedTenancy } from "./tenancy";
 
 const connectionString = process.env.DATABASE_URL!;
 const pool = new Pool({ connectionString });
@@ -144,8 +145,16 @@ async function main() {
   // Currencies and Exchange Rates
   await seedCurrencies(prisma);
 
-  // Invoice module defaults
-  await seedInvoices(prisma);
+  // SaaS multi-tenant: plans, demo agency/business (debe correr antes de
+  // seedInvoices porque Invoice_Series/Settings ahora pertenecen a un Business).
+  const demoBusiness = await seedTenancy(prisma);
+
+  // Invoice module defaults — scoped al demo business
+  if (demoBusiness) {
+    await seedInvoices(prisma, demoBusiness.id);
+  } else {
+    console.warn("Invoice seed skipped: demo business not available");
+  }
 
   console.log("-------- Seed DB completed --------");
 }

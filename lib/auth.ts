@@ -107,20 +107,17 @@ export const auth = betterAuth({
 
   callbacks: {
     async onUserCreated(user: { id: string }) {
-      // Check if this is the first user — make them admin
+      // CrystalPyme: todos los usuarios quedan ACTIVE inmediatamente.
+      // El primer usuario además es superadmin de la plataforma.
+      // No hay aprobación manual — cada usuario crea su propia agency en el onboarding.
       const count = await prismadb.users.count();
-      if (count === 1) {
-        await prismadb.users.update({
-          where: { id: user.id },
-          data: { role: "admin", userStatus: "ACTIVE" },
-        });
-      } else if (!isDemo) {
-        // Notify admins about new pending user
-        const dbUser = await prismadb.users.findUnique({ where: { id: user.id } });
-        if (dbUser) {
-          await newUserNotify(dbUser);
-        }
-      }
+      await prismadb.users.update({
+        where: { id: user.id },
+        data: {
+          userStatus: "ACTIVE",
+          ...(count === 1 && { role: "admin", isSuperadmin: true }),
+        },
+      });
     },
   },
 });
