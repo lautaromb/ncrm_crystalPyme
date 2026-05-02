@@ -74,6 +74,7 @@ export async function generateImageAction(
           style: input.style ?? "vivid",
           quality: input.quality ?? "standard",
           url: result.url,
+          isPermanent: result.isPermanent,
         } satisfies Prisma.InputJsonValue,
       }),
     ]);

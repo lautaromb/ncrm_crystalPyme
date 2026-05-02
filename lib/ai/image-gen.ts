@@ -4,11 +4,18 @@
  * Generación de imágenes con OpenAI DALL-E 3.
  * Usa OPENAI_API_KEY del env (clave de plataforma global, no por usuario).
  *
+ * Flujo de persistencia:
+ *   1. DALL-E genera la imagen y devuelve una URL efímera (~1h de vida).
+ *   2. Si MinIO está configurado, descargamos el blob y lo subimos a almacenamiento propio.
+ *   3. Devolvemos la URL permanente. Si MinIO falla, devolvemos la URL de OpenAI con un warning.
+ *
  * Nota: si en el futuro se quiere soporte por-usuario (API key del business),
  * se puede extender para leer de `api_keys` table via getApiKey().
  */
 
 import OpenAI from "openai";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getMinioClient, isMinioConfigured, MINIO_BUCKET, MINIO_PUBLIC_URL } from "@/lib/minio";
 
 // ---------------------------------------------------------------------------
 // Cliente OpenAI de plataforma
@@ -42,6 +49,8 @@ export interface GeneratedImage {
   revisedPrompt: string;
   /** Costo estimado en USD */
   estimatedCostUSD: number;
+  /** true si la URL es permanente (MinIO), false si es efímera (OpenAI, ~1h) */
+  isPermanent: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,7 +75,41 @@ function estimateCost(size: ImageSize, quality: ImageQuality): number {
 }
 
 // ---------------------------------------------------------------------------
-// generateImage — genera una imagen con DALL-E 3
+// persistImage — descarga y sube a MinIO
+// ---------------------------------------------------------------------------
+
+async function persistToMinio(openAiUrl: string): Promise<string> {
+  // Descargar blob desde la URL efímera de OpenAI
+  const response = await fetch(openAiUrl);
+  if (!response.ok) {
+    throw new Error(`No se pudo descargar imagen de OpenAI: ${response.status}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const contentType = response.headers.get("content-type") ?? "image/png";
+  const ext = contentType.includes("jpeg") ? "jpg" : "png";
+
+  // Nombre único: ai-images/YYYY/MM/DD/<timestamp>-<random>.<ext>
+  const now = new Date();
+  const datePrefix = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${String(now.getUTCDate()).padStart(2, "0")}`;
+  const key = `ai-images/${datePrefix}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  await getMinioClient().send(
+    new PutObjectCommand({
+      Bucket: MINIO_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  );
+
+  // URL pública: NEXT_PUBLIC_MINIO_ENDPOINT/<bucket>/<key>
+  const publicBase = MINIO_PUBLIC_URL.replace(/\/$/, "");
+  return `${publicBase}/${MINIO_BUCKET}/${key}`;
+}
+
+// ---------------------------------------------------------------------------
+// generateImage — genera una imagen con DALL-E 3 y la persiste
 // ---------------------------------------------------------------------------
 
 export async function generateImage(
@@ -95,9 +138,24 @@ export async function generateImage(
   const image = data[0];
   if (!image?.url) throw new Error("DALL-E no devolvió imagen");
 
-  return {
-    url: image.url,
-    revisedPrompt: image.revised_prompt ?? prompt,
-    estimatedCostUSD: estimateCost(size, quality),
-  };
+  const revisedPrompt = image.revised_prompt ?? prompt;
+  const estimatedCostUSD = estimateCost(size, quality);
+
+  // Intentar persistir en MinIO para tener una URL permanente
+  if (isMinioConfigured()) {
+    try {
+      const permanentUrl = await persistToMinio(image.url);
+      return { url: permanentUrl, revisedPrompt, estimatedCostUSD, isPermanent: true };
+    } catch (storageErr) {
+      // MinIO falló: devolver URL efímera de OpenAI con warning
+      // La imagen seguirá funcionando ~1h pero no quedará en la galería después
+      console.warn(
+        "[image-gen] No se pudo persistir en MinIO, usando URL efímera de OpenAI (~1h):",
+        storageErr instanceof Error ? storageErr.message : storageErr
+      );
+    }
+  }
+
+  // Fallback: URL efímera de OpenAI
+  return { url: image.url, revisedPrompt, estimatedCostUSD, isPermanent: false };
 }

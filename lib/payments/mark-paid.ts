@@ -29,6 +29,12 @@ export async function markInvoicePaid(params: MarkPaidParams): Promise<{
   ok: boolean;
   alreadyPaid?: boolean;
   error?: string;
+  /**
+   * true  → error de infraestructura (DB caída, timeout, etc.) — el proveedor de pagos
+   *         DEBE reintentar (retornar HTTP 500 al webhook).
+   * false → error de negocio (factura no encontrada, estado inválido, etc.) — no reintentar.
+   */
+  transient?: boolean;
 }> {
   try {
     const invoice = await prismadb.platformInvoice.findUnique({
@@ -37,7 +43,7 @@ export async function markInvoicePaid(params: MarkPaidParams): Promise<{
     });
 
     if (!invoice) {
-      return { ok: false, error: `Factura ${params.invoiceId} no encontrada` };
+      return { ok: false, error: `Factura ${params.invoiceId} no encontrada`, transient: false };
     }
 
     if (invoice.status === "PAID") {
@@ -89,8 +95,9 @@ export async function markInvoicePaid(params: MarkPaidParams): Promise<{
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[mark-invoice-paid] Error:", message);
-    return { ok: false, error: message };
+    console.error("[mark-invoice-paid] Error de infraestructura:", message);
+    // transient: true → el webhook debe retornar 500 para que el proveedor reintente
+    return { ok: false, error: message, transient: true };
   }
 }
 

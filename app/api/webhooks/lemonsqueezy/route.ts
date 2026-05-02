@@ -63,7 +63,13 @@ export async function POST(req: NextRequest) {
 
   if (!result.ok) {
     console.error("[webhook/lemonsqueezy] markInvoicePaid falló:", result.error);
-    // Devolvemos 200 para que LS no reintente infinitamente por errores de negocio
+
+    if (result.transient) {
+      // Error de infraestructura (DB caída, timeout) → LemonSqueezy debe reintentar
+      return NextResponse.json({ error: result.error }, { status: 500 });
+    }
+
+    // Error de negocio (factura no encontrada, estado inválido) → no reintentar
     return NextResponse.json({ ok: false, error: result.error });
   }
 

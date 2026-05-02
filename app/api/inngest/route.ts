@@ -25,6 +25,7 @@ import { syncExchangeRates } from "@/inngest/functions/ecb/sync-exchange-rates";
 import { monthlyBilling } from "@/inngest/functions/billing/monthly-billing";
 import { suspendOverdue } from "@/inngest/functions/billing/suspend-overdue";
 import { quotaReset } from "@/inngest/functions/billing/quota-reset";
+import { processTelegramUpdate } from "@/inngest/functions/telegram/process-update";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -55,5 +56,7 @@ export const { GET, POST, PUT } = serve({
     monthlyBilling,
     suspendOverdue,
     quotaReset,
+    // Telegram
+    processTelegramUpdate,
   ],
 });
